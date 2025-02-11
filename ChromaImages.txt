@@ -1,0 +1,84 @@
+(Images are supported in only few versions of Python, so install a supportive version)
+Python 3.11.7
+
+
+----------CMD----------
+
+
+cd downloads
+python --version
+pip install torch torchvision
+pip install chromadb numpy torch torchvision pillow
+
+
+----------Python----------
+
+
+import chromadb
+import numpy as np
+from PIL import Image
+import torch
+from torchvision import models, transforms
+
+# 1. Initialize Chroma client
+client = chromadb.Client()
+
+# 2. Create a collection for images
+collection = client.create_collection(name="image_collection")
+
+# 3. Load a pre-trained model (ResNet-50) for image embeddings
+model = models.resnet50(pretrained=True)
+model = model.eval()  # Set model to evaluation mode
+
+# Image preprocessing steps
+preprocess = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+# 4. Function to extract image embedding
+def extract_image_embedding(image_path):
+    # Load the image
+    image = Image.open(image_path)
+    
+    # Preprocess the image
+    image_tensor = preprocess(image).unsqueeze(0)  # Add batch dimension
+    
+    # Get the image embedding (before the classification layer)
+    with torch.no_grad():
+        embedding = model(image_tensor)
+    
+    # Normalize the embedding (optional step)
+    return embedding.squeeze().numpy()
+
+# 5. Add images to the collection
+image_paths = ["image1.jpg", "image2.jpg", "image3.jpg"]  # Example image file paths
+for i, image_path in enumerate(image_paths):
+    # Extract the embedding of each image
+    image_embedding = extract_image_embedding(image_path)
+    
+    # Add the image to ChromaDB collection
+    collection.add(
+        ids=[f"image_{i}"],  # Unique ID for each image
+        documents=[image_path],  # Image path as document
+        embeddings=[image_embedding]  # Image embedding
+    )
+
+print(f"Added {len(image_paths)} images to the collection.")
+
+# 6. Query with a new image (similar to the query vector step)
+query_image_path = "query_image.jpg"  # Path to query image
+query_embedding = extract_image_embedding(query_image_path)
+
+# 7. Perform similarity search on images
+results = collection.query(
+    query_embeddings=[query_embedding],  # Query with the embedding of the new image
+    n_results=3  # Get the top 3 most similar images
+)
+
+# 8. Display the results (similar images)
+print("Query results (similar images):")
+for result in results['documents']:
+    print(result)
